@@ -1,0 +1,175 @@
+import sys
+import os
+import csv
+import argparse
+
+def csv_loader(filename):
+  with open(filename, newline='') as x:
+      return list(csv.DictReader(x))
+
+def write_result_to_file(result, filename='result.txt'):
+  with open(filename, "w") as f:
+    f.write(result)
+  print(f"Saved results to {filename}")
+
+def csv_file_checker(filename):
+  if not filename.lower().endswith(".csv"):
+    raise argparse.ArgumentTypeError("File must be a .csv")
+  return filename
+  
+def make_parser(): 
+  p = argparse.ArgumentParser(description="CLI modes")
+  common = argparse.ArgumentParser(add_help=False)
+  common.add_argument("file", type=csv_file_checker, help="selects csv file") 
+  common.add_argument("--save", metavar="OUTFILE", help="write output to file") 
+
+  subs = p.add_subparsers(dest='cmd', required=True)
+  s = subs.add_parser("summary", parents=[common], help="Show stats for all categories") 
+  c = subs.add_parser("category", parents=[common], help="Show stats for a category") 
+  c.add_argument("cat", help="category type")
+  g = subs.add_parser("grandtotal", parents=[common], help="show overall total") 
+  t = subs.add_parser("test", help="perform unit tests")
+  return p
+
+def uniq_cats(data):
+  return set(
+    expense['category']
+    for expense in data
+    if isinstance(expense, dict) and 'category' in expense and expense['category']
+  )
+
+def _norm(s):
+  return (s or "").strip().lower()
+  
+def cat_amts(data, cat): 
+    amt_list = []
+    for expense in data: 
+        if _norm(expense.get('category')) == cat.lower():
+            try:
+                amt_list.append(float(expense['amount']))
+            except (ValueError, TypeError):
+                continue 
+    return amt_list
+
+def cat_stats(data, cat):
+    amt_list = cat_amts(data, cat)
+    if not amt_list:
+      print(f"\nCategory '{cat}' not found.")
+      print(f"Available categories: {uniq_cats(data)}")
+      return None
+    return {
+        'total': sum(amt_list),
+        'avg': sum(amt_list)/len(amt_list),
+        'max': max(amt_list), 
+        'min': min(amt_list)
+    }
+
+def frmt_row(data, cat, header=False):
+    row_spacing = 15
+    stats = cat_stats(data, cat)
+    header_row = f"\n{'Category':<{row_spacing}}{'Total':<{row_spacing}}{'Avg':<{row_spacing}}{'Max':<{row_spacing}}{'Min':<{row_spacing}}"
+    if not stats:
+      return f"No data for category: {cat}. Available categories: {sorted(uniq_cats(data))}"
+    row = f"{cat:<{row_spacing}}{stats['total']:<{row_spacing}}{stats['avg']:<{row_spacing}.2f}{stats['max']:<{row_spacing}}{stats['min']:<{row_spacing}}"
+    return (
+       header_row + "\n" + row if header else row
+    )
+
+def cats_stats_str(data, cat):
+    stats = cat_stats(data, cat)
+    if not stats:
+      return f"No data for category: {cat}"
+    return (
+      f"\n{'-'*20}\n"
+      f"Statistics for {cat}\n"
+      f"Total: {stats['total']}\n"
+      f"Average: {stats['avg']:.2f}\n"
+      f"Max/Min: {stats['max']}/{stats['min']}\n"
+    )
+  
+def grand_total(data):
+  total = 0
+  for expense in data: 
+    try:
+      total += float(expense.get('amount'))
+    except (ValueError, TypeError):
+      continue
+  return total
+
+#----------------------------unit tests---------------------------
+
+def test_data_mixed():
+   data = [
+      {'amount': '10', 'category': 'Food'},
+      {'amount': 20, 'category': 'Food'},
+      {'amount': 'bad', 'category': 'Food'},
+      {'amount': '', 'category': ''}, 
+      {}, 
+      {'amount': None, 'category': None},
+      {'amount': '30', 'category': 'Cafe'}
+   ]
+   return data
+
+def test_cat_amts():
+   assert cat_amts(test_data_mixed(), 'Food') == [10.0, 20.0], "TEST_CATS_AMT FAILED"
+
+def test_empty_data():
+    assert cat_amts([], 'Food') == [], 'empty data failed 1'
+    assert cat_stats([], 'Food') is None, 'empty data failed 2'
+    assert "No data" in cat_stats_str([], 'Food'), 'empty data failed 3'
+
+def test_cat_stats():
+    data = [
+        {'amount': '10', 'category': 'Food'},
+        {'amount': '20', 'category': 'Food'}
+    ]
+    assert cat_stats(data, 'Food') == {'total': 30.0, 'avg': 15.0, 'max': 20.0, 'min': 10.0}
+  
+def test_uniq_cats():
+    data = [
+        {'amount': '10', 'category': 'Food'},
+        {'amount': '5', 'category': 'Cafe'},
+        {'amount': '5', 'category': ''}, #ignored
+        {'amount': '5', 'category': None}, #ignored
+        {} #ignored 
+    ]
+    assert uniq_cats(data) == {'Food', 'Cafe'}
+
+def run_all_tests():
+    test_cat_amts()
+    test_empty_data()
+    test_cat_stats()
+    test_uniq_cats()
+    return "All tests passed"
+#-----------------------------------------------------------------
+
+if __name__ == "__main__":
+  parser = make_parser()
+  args = parser.parse_args()
+
+  if args.cmd == 'test':
+    print(run_all_tests())
+    sys.exit(0)
+
+  try:
+      data = csv_loader(args.file)
+  except FileNotFoundError as e:
+      print(e)
+      sys.exit(1)
+
+  if args.cmd == 'summary':
+    rows = [
+      frmt_row(data, cat, header=(i == 0)) for i, cat in enumerate(sorted(uniq_cats(data)))
+    ]
+    results = "\n".join(rows)
+  elif args.cmd == 'category':
+    results = frmt_row(data, args.cat, header=True)
+  elif args.cmd == 'grandtotal':
+    results = f"Grand total: {grand_total(data)}"
+  else:
+      parser.print_help()
+      sys.exit(2)
+  print(results)
+
+  if getattr(args, "save", None):
+    write_result_to_file(str(results), args.save)
