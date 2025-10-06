@@ -2,12 +2,6 @@ import sys
 import os
 import csv
 import argparse
-"test commit. delete me"
-"this commit should be benjaminhoang760"
-"okay commit 4"
-"commit 5?"
-"commit using CLI"
-"branch attempt #2"
 
 def csv_loader(filename):
   with open(filename, newline='') as x:
