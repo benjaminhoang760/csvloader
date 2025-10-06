@@ -116,7 +116,7 @@ def test_cat_amts():
 def test_empty_data():
     assert cat_amts([], 'Food') == [], 'empty data failed 1'
     assert cat_stats([], 'Food') is None, 'empty data failed 2'
-    assert "No data" in cat_stats_str([], 'Food'), 'empty data failed 3'
+    assert "No data" in cats_stats_str([], 'Food'), 'empty data failed 3'
 
 def test_cat_stats():
     data = [
